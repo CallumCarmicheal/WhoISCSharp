@@ -12,15 +12,12 @@ namespace WhoIsCSharp.lib {
         enum PStage {
             Servers=1,
             DomainData=2,
-            DomainDates=3,
-            WhoIsDBDates=4,
-            DomainName=5,
-            DomainRegInfo=6,
-            DomainStatus=7,
-            Registrant=8,
-            NameServers=9,
-            DNSSec=10,
-            AbuseInfo=11
+            DomainName=3,
+            DomainRegInfo=4,
+            DomainStatus=5,
+            Registrant=6,
+            NameServers=7,
+            DNSSecAndAbuse=8,
         }
         
         // Original, Expected, Value, Target
@@ -51,8 +48,19 @@ namespace WhoIsCSharp.lib {
             }
         }
 
+        private static void SetURL(string o, string e, string[] v, ref string t) {
+            if(o == e) {
+                string url = "";
+                for(int x = 1; x < v.Length; x++) 
+                    url += ":" + v[x];
+                url = url.Substring(1, url.Length-1);
+                t = url;
+            }
+        }
+
         // Original, Expected, Value, Target
-        private static void SetDMY(string o, string e, string v, DateTime t) {
+        // if (o == e) v = t
+        private static void SetDMY(string o, string e, string v, ref DateTime t) {
             if (o == e) 
                 t = DateTime.ParseExact(
                     v.Trim(), 
@@ -178,7 +186,7 @@ namespace WhoIsCSharp.lib {
                         Set(opt, "IP Address",   val, ref tServer.IP);
                         Set(opt, "Registrar",    val, ref tServer.Registrar);
                         Set(opt, "Whois Server", val, ref tServer.WIServer);
-                        Set(opt, "Referral URL", val, ref tServer.ReferralURL);
+                        SetURL(opt, "Referral URL", l, ref tServer.ReferralURL);
                     }
                     break;
 
@@ -197,7 +205,7 @@ namespace WhoIsCSharp.lib {
                     Set(opt, "Registrar", val, ref dom.Registrar.Name);
                     Set(opt, "Sponsoring Registrar IANA ID", val, ref dom.Registrar.ID);
                     Set(opt, "Whois Server", val, ref dom.Registrar.WIServer);
-                    Set(opt, "Referral URL", val, ref dom.Registrar.ReferralURL);
+                    SetURL(opt, "Referral URL", l, ref dom.Registrar.ReferralURL);
                     Set(opt, "Name Server", val, tSList);
                     
                     // Save our name servers
@@ -209,11 +217,40 @@ namespace WhoIsCSharp.lib {
                     if (opt == "Updated Date")
                         dom.Status = tDList.ToArray();
 
-                    SetDMY(opt, "Updated Date", val, dom.DateUpdated);
-                    SetDMY(opt, "Creation Date", val, dom.DateCreated);
-                    SetDMY(opt, "Expiration Date", val, dom.DateExpiring);
+                    SetDMY(opt, "Updated Date",     val, ref dom.DateUpdated);
+                    SetDMY(opt, "Creation Date",    val, ref dom.DateCreated);
+                    SetDMY(opt, "Expiration Date",  val, ref dom.DateExpiring);
+
+                    if (opt.StartsWith(">>>")) {
+                        string format = "ddd, dd MMM yyyy HH':'mm':'ss 'GMT'";
+
+                        val = "";
+                        for (int z = 1; z < l.Length; z++)
+                            val += ":" + l[z];
+                        val = val.Substring(1, val.Length - 1);
+                        val = val.Replace("<<<", "").Trim();
+                        DateTime t = DateTime.ParseExact(val, format, null);
+                        dom.DateWIUpdated = t;
+
+                        stage++; continue;
+                    }
 
                     break;
+
+                case PStage.DomainName:
+                    stage++;
+                    break;
+                case PStage.DomainRegInfo:
+                    Set(opt, "Registry Domain ID", val, ref dom.Registrar.ID);
+                    Set(opt, "Registrar WHOIS Server", val, ref dom.Registrar.WIServer);
+                    SetURL(opt, "Registrar URL", l, ref dom.Registrar.URL);
+                    Set(opt, "Registrar WHOIS Server", val, ref dom.Registrar.WIServer);
+                    Set(opt, "Registrar WHOIS Server", val, ref dom.Registrar.WIServer);
+                    Set(opt, "Registrar WHOIS Server", val, ref dom.Registrar.WIServer);
+                    Set(opt, "Registrar WHOIS Server", val, ref dom.Registrar.WIServer);
+
+                    break;
+
                 default:
                     break;
                 }
