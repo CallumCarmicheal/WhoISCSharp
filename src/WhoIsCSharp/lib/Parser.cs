@@ -12,12 +12,10 @@ namespace WhoIsCSharp.lib {
         enum PStage {
             Servers=1,
             DomainData=2,
-            DomainName=3,
-            DomainRegInfo=4,
-            DomainStatus=5,
-            Registrant=6,
-            NameServers=7,
-            DNSSecAndAbuse=8,
+            DomainRegInfo=3,
+            ContactInformation=4,
+            NameServers=5,
+            ExtraFinalProperties=6,
         }
         
         // Original, Expected, Value, Target
@@ -32,19 +30,30 @@ namespace WhoIsCSharp.lib {
         }
 
         // Original, Expected, Value, Target
-        private static void Set(string o, string e, string v, List<string> t) {
+        private static void Set(string o, string e, string v, ref List<string> t) {
             if (o == e) 
                 t.Add(v.Trim());
         }
 
         // Original, Expected, Value, Target
-        private static void Set(string o, string e, string v, List<DStatus> t) {
+        private static void Set(string o, string e, string[] l, ref List<DStatus> t) {
             if (o == e) {
-                string[] x = v.Split(' ');
-                var d = new DStatus();
-                d.Event = x[0];
-                d.IcannURl = x[1];
-                t.Add(d);
+                string[] x = string.Join(":",l).Split(' ');
+                string evt = x[x.Length -2];
+                string icn = x[x.Length -1];
+
+                bool exist = false;
+
+                foreach(var i in t) 
+                    if (i.Event == x[0])
+                        exist = true; 
+
+                if (!exist) {
+                    var d = new DStatus();
+                    d.Event = evt;
+                    d.IcannURl = icn;
+                    t.Add(d);
+                }
             }
         }
 
@@ -60,15 +69,25 @@ namespace WhoIsCSharp.lib {
 
         // Original, Expected, Value, Target
         // if (o == e) v = t
-        private static void SetDMY(string o, string e, string v, ref DateTime t) {
-            if (o == e) 
-                t = DateTime.ParseExact(
-                    v.Trim(), 
-                    "dd-MMM-yyyy", 
-                    null);
+        private static void Set(string o, string e, string v, ref DateTime t) {
+            if (o == e) {
+                if (v.Contains("T")) {
+                    // Contains Timezone
+                    string[] x = v.Split('T');
+
+                    // Ignoring what i presume to be the 
+                    // timezone T part because i have
+                    // no idea how to even parse it nor
+                    // use it to modify the dt supplied.
+                    t = DateTime.Parse(x[0].Trim());
+                } else {
+                    t = DateTime.Parse(v.Trim());
+                }
+            }
+            
         }
 
-        public static void Parse(string WIResponse) {
+        public static Domain Parse(string WIResponse) {
             var wiResp  = WIResponse.Split('\n');
             var wiLines = new List<string>();
             Domain dom = new Domain();
@@ -104,7 +123,7 @@ namespace WhoIsCSharp.lib {
             var wiLRaw = wiLines.ToArray();
 
             // Save our wiLines for debugging later
-            System.IO.File.WriteAllLines("debug.var.wiLines", wiLines.ToArray());
+            System.IO.File.WriteAllLines("tests/debug.var.wiLines", wiLines.ToArray());
 
             /**
              * Who is response data starts with the following flow 
@@ -126,19 +145,6 @@ namespace WhoIsCSharp.lib {
              * 13) DNS Sec
              * 14) Registrar Abuse Information
              */
-
-            // First setup our objects
-            // I know i can do this in the classes
-            // but cbb ;)
-            dom.DomainStatus        = new Domain.DStatus();
-            dom.Registrant          = new Registrant();
-            dom.Registrant.Contact  = new Models.Common.Contact();
-            dom.Registrant.Location = new Models.Common.Location();
-            dom.Registrant.Registry = new Models.Common.RegistRegistry();
-            dom.Staff               = new Staff();
-            dom.Staff.Admin         = new Models.Common.StaffMember();
-            dom.Staff.Tech          = new Models.Common.StaffMember();
-            dom.Registrar           = new Registrar();
 
             string[] iServers = {
                 "Server Name",  "IP Address",
@@ -163,9 +169,12 @@ namespace WhoIsCSharp.lib {
             int stage = (int)PStage.Servers;
 
             string lOpt = "";
-            for (int i = 0; i < wiLines.Count - 1; i++) {
+            bool cont = true;
+            for (int i = 0; cont; i++) {
                 string   x = wiLRaw[i];
                 string[] l = x.Split(':');
+
+                cont = i < wiLines.Count - 1;
 
                 string 
                     opt = l[0],
@@ -176,7 +185,7 @@ namespace WhoIsCSharp.lib {
                 switch ((PStage)(stage)) {
                 case PStage.Servers:
                     if (!iServers.Contains(opt)) {
-                        stage++; continue;
+                        i--; stage++; continue;
                     }
 
                     if (opt == "Server Name") {
@@ -193,7 +202,7 @@ namespace WhoIsCSharp.lib {
                 case PStage.DomainData:
                     if (!iSDomain.Contains(opt) && 
                         !opt.StartsWith(">>>")) {
-                        stage++; continue;
+                        i--; stage++; continue;
                     }
 
                     if (opt == "Domain Name") {
@@ -206,20 +215,20 @@ namespace WhoIsCSharp.lib {
                     Set(opt, "Sponsoring Registrar IANA ID", val, ref dom.Registrar.ID);
                     Set(opt, "Whois Server", val, ref dom.Registrar.WIServer);
                     SetURL(opt, "Referral URL", l, ref dom.Registrar.ReferralURL);
-                    Set(opt, "Name Server", val, tSList);
+                    Set(opt, "Name Server", val, ref tSList);
                     
                     // Save our name servers
                     if(opt == "Status" && lOpt == "Name Server") 
                         dom.NameServers = tSList.ToArray<string>();
 
-                    Set(opt, "Status", val, tDList);
+                    Set(opt, "Status", l, ref tDList);
 
                     if (opt == "Updated Date")
                         dom.Status = tDList.ToArray();
 
-                    SetDMY(opt, "Updated Date",     val, ref dom.DateUpdated);
-                    SetDMY(opt, "Creation Date",    val, ref dom.DateCreated);
-                    SetDMY(opt, "Expiration Date",  val, ref dom.DateExpiring);
+                    Set(opt, "Updated Date",     val, ref dom.DateUpdated);
+                    Set(opt, "Creation Date",    val, ref dom.DateCreated);
+                    Set(opt, "Expiration Date",  val, ref dom.DateExpiring);
 
                     if (opt.StartsWith(">>>")) {
                         string format = "ddd, dd MMM yyyy HH':'mm':'ss 'GMT'";
@@ -237,17 +246,121 @@ namespace WhoIsCSharp.lib {
 
                     break;
 
-                case PStage.DomainName:
-                    stage++;
-                    break;
                 case PStage.DomainRegInfo:
-                    Set(opt, "Registry Domain ID", val, ref dom.Registrar.ID);
-                    Set(opt, "Registrar WHOIS Server", val, ref dom.Registrar.WIServer);
+                    Set(opt,    "Registry Domain ID", val, ref dom.Registrar.ID);
+                    Set(opt,    "Registrar WHOIS Server", val, ref dom.Registrar.WIServer);
                     SetURL(opt, "Registrar URL", l, ref dom.Registrar.URL);
-                    Set(opt, "Registrar WHOIS Server", val, ref dom.Registrar.WIServer);
-                    Set(opt, "Registrar WHOIS Server", val, ref dom.Registrar.WIServer);
-                    Set(opt, "Registrar WHOIS Server", val, ref dom.Registrar.WIServer);
-                    Set(opt, "Registrar WHOIS Server", val, ref dom.Registrar.WIServer);
+                    Set(opt,    "Updated Date", val, ref dom.Registrar.WIServer);
+                    Set(opt,    "Creation Date", val, ref dom.Registrar.WIServer);
+                    Set(opt,    "Registrar Registration Expiration Date", val, ref dom.Registrar.DateRegExp);
+                    Set(opt,    "Registrar", val, ref dom.Registrar.Name);
+                    Set(opt,    "Registrar IANA ID", val, ref dom.Registrar.IanaID);
+                    Set(opt,    "Reseller", val, ref dom.Reseller);
+                    
+                    if (opt == "Domain Status" && lOpt == "Reseller") {
+                        // Clear the temp status list
+                        // Add the current events
+                        tDList.Clear();
+                        
+                        if (dom.DomainStatus != null) {
+                            if (dom.DomainStatus.Length >= 0)
+                                tDList.AddRange(dom.DomainStatus);
+                        }
+                    }
+
+                    Set(opt, "Domain Status", l, ref tDList);
+
+                    if (opt == "Registry Registrant ID" && 
+                        lOpt == "Domain Status") {
+                        dom.DomainStatus = tDList.ToArray();
+
+                        // Increase the current stage to Registrant
+                        // Decrease the loop to re-run the current value
+                        i--; 
+                        stage++;
+                    } break;
+
+                case PStage.ContactInformation:
+                    // Prob a better way of doing this but what the hell..
+
+                    Set(opt, "Registry Registrant ID", val, ref dom.Staff.Registrant.ID);
+                    Set(opt, "Registry Admin ID", val, ref dom.Staff.Admin.ID);
+                    Set(opt, "Registry Tech ID", val, ref dom.Staff.Tech.ID);
+
+                    Set(opt, "Registrant Name", val, ref dom.Staff.Registrant.Name);
+                    Set(opt, "Admin Name", val, ref dom.Staff.Admin.Name);
+                    Set(opt, "Tech Name", val, ref dom.Staff.Tech.Name);
+
+                    Set(opt, "Registrant Organization", val, ref dom.Staff.Registrant.Organisation);
+                    Set(opt, "Admin Organization", val, ref dom.Staff.Admin.Organisation);
+                    Set(opt, "Tech Organization", val, ref dom.Staff.Tech.Organisation);
+
+                    Set(opt, "Registrant Street", val, ref dom.Staff.Registrant.Location.Street);
+                    Set(opt, "Admin Street", val, ref dom.Staff.Admin.Location.Street);
+                    Set(opt, "Tech Street", val, ref dom.Staff.Tech.Location.Street);
+
+                    Set(opt, "Registrant City", val, ref dom.Staff.Registrant.Location.City);
+                    Set(opt, "Admin City", val, ref dom.Staff.Admin.Location.City);
+                    Set(opt, "Tech City", val, ref dom.Staff.Tech.Location.City);
+
+                    Set(opt, "Registrant State/Province", val, ref dom.Staff.Registrant.Location.State);
+                    Set(opt, "Admin State/Province", val, ref dom.Staff.Admin.Location.State);
+                    Set(opt, "Tech State/Province", val, ref dom.Staff.Tech.Location.State);
+
+                    Set(opt, "Registrant Postal Code", val, ref dom.Staff.Registrant.Location.PostalCode);
+                    Set(opt, "Admin Postal Code", val, ref dom.Staff.Admin.Location.PostalCode);
+                    Set(opt, "Tech Postal Code", val, ref dom.Staff.Tech.Location.PostalCode);
+
+                    Set(opt, "Registrant Country", val, ref dom.Staff.Registrant.Location.Country);
+                    Set(opt, "Admin Country", val, ref dom.Staff.Admin.Location.Country);
+                    Set(opt, "Tech Country", val, ref dom.Staff.Tech.Location.Country);
+
+                    Set(opt, "Registrant Phone", val, ref dom.Staff.Registrant.Contact.Phone);
+                    Set(opt, "Admin Phone", val, ref dom.Staff.Admin.Contact.Phone);
+                    Set(opt, "Tech Phone", val, ref dom.Staff.Tech.Contact.Phone);
+
+                    Set(opt, "Registrant Phone Ext", val, ref dom.Staff.Registrant.Contact.PhoneExt);
+                    Set(opt, "Admin Phone Ext", val, ref dom.Staff.Admin.Contact.PhoneExt);
+                    Set(opt, "Tech Phone Ext", val, ref dom.Staff.Tech.Contact.PhoneExt);
+
+                    Set(opt, "Registrant Fax", val, ref dom.Staff.Registrant.Contact.Fax);
+                    Set(opt, "Admin Fax", val, ref dom.Staff.Admin.Contact.Fax);
+                    Set(opt, "Tech Fax", val, ref dom.Staff.Tech.Contact.Fax);
+
+                    Set(opt, "Registrant Fax Ext", val, ref dom.Staff.Registrant.Contact.FaxExt);
+                    Set(opt, "Admin Fax Ext", val, ref dom.Staff.Admin.Contact.FaxExt);
+                    Set(opt, "Tech Fax Ext", val, ref dom.Staff.Tech.Contact.FaxExt);
+
+                    Set(opt, "Registrant Email", val, ref dom.Staff.Registrant.Contact.Email);
+                    Set(opt, "Admin Email", val, ref dom.Staff.Admin.Contact.Email);
+                    Set(opt, "Tech Email", val, ref dom.Staff.Tech.Contact.Email);
+
+                    if (opt == "Tech Email") 
+                        stage++;
+                    break;
+
+                case PStage.NameServers:
+
+                    if (lOpt == "Tech Email") 
+                        tSList.Clear();
+
+                    Set(opt, "Name Server", val, ref tSList);
+
+                    if (opt != "Name Server") {
+                        i--;
+                        stage++;
+                        continue;
+                    } break;
+
+                case PStage.ExtraFinalProperties:
+
+                    Set(opt, "DNSSEC", val, ref dom.DNSSEC);
+                    SetURL(opt, "URL of the ICANN WHOIS Data Problem Reporting System", l, ref dom.WhoIs.ErrorReportURL);
+                    
+                    if (opt == "URL of the ICANN WHOIS Data Problem Reporting System") {
+                        cont = false;
+                        goto default;
+                    }
 
                     break;
 
@@ -258,7 +371,7 @@ namespace WhoIsCSharp.lib {
                 lOpt = opt;
             }
 
-            return;
+            return dom;
         }
     }
 }

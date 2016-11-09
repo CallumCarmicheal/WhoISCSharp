@@ -11,6 +11,7 @@ namespace WhoIsCSharp.lib.Models {
         public Common.RegistRegistry
             Registry;
         public string 
+            ID,
             Name,
             Organisation;
         public Common.Location 

@@ -12,37 +12,25 @@ namespace WhoIsCSharp.lib.Models {
                 IcannURl;
         }
 
-        public string
-            Name;                   // Domain Name: GOOGLE.COM
-        public string
-            WIServer,               //
-            ReferralURL;            //
-        public string[]
-            NameServers;            //
-        public DStatus[]
-            Status;                 //
-        public DateTime
-            DateUpdated,            //
-            DateCreated,            // 
-            DateExpiring,           // 
-            DateWIUpdated;          // >>> Last update of whois database: Mon, 07 Nov 2016 14:13:04 GMT <<<
-        public string 
-            Reseller;
-
-        public DStatus              DomainStatus;
-        public Registrant           Registrant;
-        public Staff                Staff;
-
-        public string               DNSSEC;
-
-        public Registrar            Registrar;
+        public string               Name            = "";
+        public string               Reseller        = "";
+        public string[]             NameServers     ; 
+        public DStatus[]            Status          ;        
+        public DateTime             DateUpdated     ;
+        public DateTime             DateCreated     ;
+        public DateTime             DateExpiring    ;
+        public DateTime             DateWIUpdated   ;
+        public DStatus[]            DomainStatus    ;
+        public Staff                Staff           ;
+        public string               DNSSEC          = "unsigned";
+        public Common.SimpleWIData  WhoIs           ;
+        public Registrar            Registrar       ;
         
 
-        public bool Exists;
-
-        public bool isExpired() {
-            // Check if the Date expiring has already passed
-            return (DateExpiring <= DateTime.Now);
+        public Domain() {
+            Staff = new Staff();
+            Registrar = new Registrar();
+            WhoIs = new Common.SimpleWIData();
         }
     }
 }

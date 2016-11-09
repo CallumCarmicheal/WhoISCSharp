@@ -12,9 +12,10 @@ namespace WhoIsCSharp.lib.Models {
             WIServer,
             AbuseContact_Email,
             AbuseContact_Phone,
-            ReferralURL;
-        public int
+            ReferralURL,
             ID;
+        public int
+            IanaID;
         public DateTime
             DateRegExp;
     }
